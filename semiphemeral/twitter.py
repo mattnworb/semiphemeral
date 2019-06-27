@@ -2,7 +2,9 @@ import tweepy
 import click
 import json
 import datetime
+import os.path
 
+from tweepy.models import Status
 from .db import Tweet, Thread
 
 
@@ -58,57 +60,7 @@ class Twitter(object):
                 since_id=since_id,
                 tweet_mode='extended'
             ).pages():
-                fetched_count = 0
-
-                # Import these tweets, and all their threads
-                for status in page:
-                    fetched_count += self.import_tweet(Tweet(status))
-
-                    # Only commit every 20 tweets
-                    if fetched_count % 20 == 0:
-                        self.common.session.commit()
-
-                # Commit the leftovers
-                self.common.session.commit()
-
-                # Now hunt for threads. This is a dict that maps the root status_id
-                # to a list of status_ids in the thread
-                threads = {}
-                for status in page:
-                    if status.in_reply_to_status_id:
-                        status_ids = self.calculate_thread(status.id)
-                        root_status_id = status_ids[0]
-                        if root_status_id in threads:
-                            for status_id in status_ids:
-                                if status_id not in threads[root_status_id]:
-                                    threads[root_status_id].append(status_id)
-                        else:
-                            threads[root_status_id] = status_ids
-
-                # For each thread, does this thread already exist, or do we create a new one?
-                for root_status_id in threads:
-                    status_ids = threads[root_status_id]
-                    thread = self.common.session.query(Thread).filter_by(root_status_id=root_status_id).first()
-                    if not thread:
-                        thread = Thread(root_status_id)
-                        count = 0
-                        for status_id in status_ids:
-                            tweet = self.common.session.query(Tweet).filter_by(status_id=status_id).first()
-                            if tweet:
-                                thread.tweets.append(tweet)
-                                count += 1
-                        if count > 0:
-                            click.echo('Added new thread with {} tweets (root id={})'.format(count, root_status_id))
-                    else:
-                        count = 0
-                        for status_id in status_ids:
-                            tweet = self.common.session.query(Tweet).filter_by(status_id=status_id).first()
-                            if tweet and tweet not in thread.tweets:
-                                thread.tweets.append(tweet)
-                                count += 1
-                        if count > 0:
-                            click.echo('Added {} tweets to existing thread (root id={})'.format(count, root_status_id))
-                    self.common.session.commit()
+                self.import_tweets(page)
 
         if self.common.settings.get('retweets_likes') and self.common.settings.get('retweets_likes_delete_likes'):
             # It appears that twitter will only return the last 4000 likes. So if
@@ -161,6 +113,60 @@ class Twitter(object):
         if not tweet.in_reply_to_status_id:
             return [status_id]
         return self.calculate_thread(tweet.in_reply_to_status_id) + [status_id]
+
+    def import_tweets(self, tweets):
+        """ Import a batch of tweets, fetching threads """
+        fetched_count = 0
+        for status in tweets:
+            fetched_count += self.import_tweet(Tweet(status))
+
+            # Only commit every 20 tweets
+            if fetched_count % 20 == 0:
+                self.common.session.commit()
+
+        # Commit the leftovers
+        self.common.session.commit()
+
+        # Now hunt for threads. This is a dict that maps the root status_id
+        # to a list of status_ids in the thread
+        threads = {}
+        for status in tweets:
+            if status.in_reply_to_status_id:
+                status_ids = self.calculate_thread(status.id)
+                root_status_id = status_ids[0]
+                if root_status_id in threads:
+                    for status_id in status_ids:
+                        if status_id not in threads[root_status_id]:
+                            threads[root_status_id].append(status_id)
+                else:
+                    threads[root_status_id] = status_ids
+
+        # For each thread, does this thread already exist, or do we create a new one?
+        for root_status_id in threads:
+            status_ids = threads[root_status_id]
+            thread = self.common.session.query(Thread).filter_by(root_status_id=root_status_id).first()
+            if not thread:
+                thread = Thread(root_status_id)
+                count = 0
+                for status_id in status_ids:
+                    tweet = self.common.session.query(Tweet).filter_by(status_id=status_id).first()
+                    if tweet:
+                        thread.tweets.append(tweet)
+                        count += 1
+                if count > 0:
+                    click.echo('Added new thread with {} tweets (root id={})'.format(count, root_status_id))
+            else:
+                count = 0
+                for status_id in status_ids:
+                    tweet = self.common.session.query(Tweet).filter_by(status_id=status_id).first()
+                    if tweet and tweet not in thread.tweets:
+                        thread.tweets.append(tweet)
+                        count += 1
+                if count > 0:
+                    click.echo('Added {} tweets to existing thread (root id={})'.format(count, root_status_id))
+            self.common.session.commit()
+
+        return fetched_count
 
     def import_tweet(self, tweet):
         """
@@ -318,3 +324,34 @@ class Twitter(object):
                     self.common.session.commit()
 
             self.common.session.commit()
+
+    def import_dump(self, filepath):
+        if self.common.settings.get('delete_tweets'):
+            with open(os.path.join(filepath, 'tweet.js'), 'r') as f:
+                # Skip the JS variable assignment at the start of this file
+                f.read(25)
+                tweets = json.load(f)
+            click.echo('Importing {} tweets from {}'.format(len(tweets), filepath))
+
+            current_user = self.api.me()
+
+            def parse_tweet(tweet):
+                """ Parse a JSON tweet into a tweepy object and insert missing author. """
+                t = Status.parse(self.api, tweet)
+                t.author = current_user
+                return t
+
+            for offset in range(0, len(tweets), 500):
+                self.import_tweets(parse_tweet(t) for t in tweets[offset:offset+500])
+
+        # All done, update the since_id
+        tweet = self.common.session.query(Tweet).order_by(Tweet.status_id.desc()).first()
+        if tweet:
+            self.common.settings.set('since_id', tweet.status_id)
+            self.common.settings.save()
+
+        # Calculate which threads should be excluded from deletion
+        self.calculate_excluded_threads()
+
+        self.common.settings.set('last_fetch', datetime.datetime.today().strftime(self.last_fetch_format))
+        self.common.settings.save()

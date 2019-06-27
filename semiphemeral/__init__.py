@@ -62,6 +62,13 @@ def delete():
     if common.settings.is_configured():
         t.delete()
 
+@main.command('import', short_help='Import tweets from a Twitter data export')
+@click.argument('path', type=click.Path(exists=True))
+def delete(path):
+    common = init()
+    t = Twitter(common)
+    t.import_dump(path)
+
 
 @main.command('excluded_export', short_help='Export tweets excluded that are excluded from deletion')
 @click.option('--filename', required=True, help='Output JSON file to save a list of tweet status_ids')
