@@ -126,7 +126,8 @@ class Twitter(object):
             for page in tweepy.Cursor(
                 self.api.favorites,
                 id=self.common.settings.get('username'),
-                since_id=like_since_id
+                since_id=like_since_id,
+                tweet_mode='extended'
             ).pages():
                 # Import these tweets
                 for status in page:
