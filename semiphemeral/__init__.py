@@ -91,3 +91,20 @@ def excluded_import(filename):
     if common.settings.is_configured():
         ie = ImportExport(common, t)
         ie.excluded_import(filename)
+
+@main.command('import', short_help='Import tweets from a Twitter data export')
+@click.argument('filename', type=click.Path(exists=True))
+def archive_import(filename):
+    """
+    Path to tweet.js from Twitter data downloaded from
+    https://twitter.com/settings/your_twitter_data
+
+    filename: Location where is tweet.js
+    uses:
+
+    semiphemeral import .
+    """
+    common = init()
+    t = Twitter(common)
+    t.import_dump(filename)
+
