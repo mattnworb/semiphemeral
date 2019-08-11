@@ -64,6 +64,13 @@ def delete():
     if common.settings.is_configured():
         t.delete()
 
+@main.command('import', short_help='Import tweets from a Twitter data export')
+@click.argument('path', type=click.Path(exists=True))
+def archive_import(path):
+    common = init()
+    t = Twitter(common)
+    t.import_dump(path)
+
 
 @main.command('unlike', short_help='Delete old likes that aren\'t available through the Twitter API')
 @click.option('--filename', required=True, help='Path to like.js from Twitter data downloaded from https://twitter.com/settings/your_twitter_data')
