@@ -1,5 +1,6 @@
 import os
 import click
+import json
 
 from .common import Common
 from .settings import Settings
@@ -8,7 +9,7 @@ from .web import create_app
 from .twitter import Twitter
 from .import_export import ImportExport
 
-version = '0.3'
+version = '0.5'
 
 
 def init():
@@ -30,13 +31,14 @@ def main():
 
 @main.command('configure', short_help='Start the web server to configure semiphemeral')
 @click.option('--debug', is_flag=True, help='Start web server in debug mode')
-def configure(debug):
+@click.option('--port', default=8080, help='Port to expose the web server on')
+def configure(debug, port):
     common = init()
     click.echo('Load this website in a browser to configure semiphemeral, and press Ctrl-C when done')
-    click.echo('http://127.0.0.1:8080')
+    click.echo('http://127.0.0.1:{port}'.format(port=port))
     click.echo('')
     app = create_app(common)
-    app.run(host='127.0.0.1', port=8080, threaded=False, debug=debug)
+    app.run(host='127.0.0.1', port=port, threaded=False, debug=debug)
 
 
 @main.command('stats', short_help='Show stats about tweets in the database')
@@ -70,6 +72,16 @@ def archive_import(path):
     t.import_dump(path)
 
 
+@main.command('unlike', short_help='Delete old likes that aren\'t available through the Twitter API')
+@click.option('--filename', required=True, help='Path to like.js from Twitter data downloaded from https://twitter.com/settings/your_twitter_data')
+def unlike(filename):
+    common = init()
+
+    t = Twitter(common)
+    if common.settings.is_configured():
+        t.unlike(filename)
+
+
 @main.command('excluded_export', short_help='Export tweets excluded that are excluded from deletion')
 @click.option('--filename', required=True, help='Output JSON file to save a list of tweet status_ids')
 def excluded_export(filename):
@@ -86,3 +98,20 @@ def excluded_import(filename):
     if common.settings.is_configured():
         ie = ImportExport(common, t)
         ie.excluded_import(filename)
+
+@main.command('import', short_help='Import tweets from a Twitter data export')
+@click.argument('filename', type=click.Path(exists=True))
+def archive_import(filename):
+    """
+    Path to tweet.js from Twitter data downloaded from
+    https://twitter.com/settings/your_twitter_data
+
+    filename: Location where is tweet.js
+    uses:
+
+    semiphemeral import .
+    """
+    common = init()
+    t = Twitter(common)
+    t.import_dump(filename)
+

@@ -26,7 +26,11 @@ class Settings(object):
             #'dms_days_threshold': 30,
             'since_id': None,
             #'dms_since_id': None,
-            'last_fetch': None
+            'last_fetch': None,
+            'unlike_ignore_list': [],
+            'logging': False,
+            'log_filename': os.path.expanduser('~/.semiphemeral/log'),
+            'log_format': '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
         }
         self.load()
 
@@ -59,3 +63,11 @@ class Settings(object):
             self.get('username') == '':
             return False
         return True
+
+    def unlike_should_ignore(self, status_id):
+        return status_id in self.get('unlike_ignore_list')
+
+    def unlike_ignore(self, status_id):
+        if status_id not in self.settings['unlike_ignore_list']:
+            self.settings['unlike_ignore_list'].append(status_id)
+        self.save()
