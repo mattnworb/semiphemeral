@@ -1,5 +1,15 @@
 # Semiphemeral Changelog
 
+## 0.7
+
+* Feature: Support for proxies, including Tor
+* Feature: Add `--host` option to complement `--port` option
+* Bugfix: Fix `direct-messages.js` filename check in Twitter archive
+
+## 0.6
+
+* Feature: Support deleting DMs
+
 ## 0.5
 
 * Bugfix: Fixed issue fetching tweets from the Twitter API in unlike mode
