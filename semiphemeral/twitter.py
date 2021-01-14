@@ -699,7 +699,7 @@ class Twitter(object):
 
             def parse_tweet(tweet):
                 """ Parse a JSON tweet into a tweepy object and insert missing author. """
-                t = Status.parse(self.api, tweet)
+                t = Status.parse(self.api, tweet['tweet'])
                 t.author = current_user
                 return t
 
